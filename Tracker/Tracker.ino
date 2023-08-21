@@ -14,13 +14,8 @@
 // Define the serial console for debug prints, if needed
 #define TINY_GSM_DEBUG SerialMon
 
-const char apn[]  = "YOUR-APN";     //SET TO YOUR APN
-const char gprsUser[] = "";
-const char gprsPass[] = "";
-
 // set GSM PIN, if any
 #define GSM_PIN "1234"
-
 
 #include "SMSmodem.h"
 #include <SPI.h>
@@ -92,6 +87,7 @@ void setup() {
         SerialMon.println("Failed to restart modem, attempting to continue without restarting");
     }
 
+    // Dump Modem information
     String name = modem.getModemName();
     delay(500);
     SerialMon.println("Modem Name: " + name);
@@ -99,12 +95,15 @@ void setup() {
     String modemInfo = modem.getModemInfo();
     delay(500);
 
+    // Unlock SIM 
     if ( GSM_PIN && modem.getSimStatus() != 3 ) {
       modem.simUnlock(GSM_PIN);
     }    
 
+    // Power Saver interrupt
     attachInterrupt(PIN_RI,sms_incomming,FALLING);
 
+    // Network Connection
     DBG("Waiting for network...");
     while(!modem.waitForNetwork()) {
         delay(1000);
@@ -114,8 +113,10 @@ void setup() {
         DBG("Network connected");
     }
 
+    // GPS connection
     DBG("Enabling GPS/GNSS/GLONASS and waiting 15s for warm-up");
-    //modem.enableGPS();
+
+    //modem.enableGPS(); // deprecated
     //delay(15000L);
 
     //Disable gnss
@@ -150,11 +151,8 @@ char dat[30];
 
 
 void loop() {
-  // put your main code here, to run repeatedly:
 
-  
-
-  int index = modem.waitResponse(GF(GSM_NL "+CMT:"),GF(GSM_NL "RING"));
+  int index = modem.waitResponse(GF(GSM_NL "+CMT:"),GF(GSM_NL "RING")); // Wait for SMS reception
 
   if (index==1){
 
@@ -162,8 +160,10 @@ void loop() {
   String Text;
 
   modem.waitResponse(1000,SenderNum,GF(","));
+
   SenderNum.remove(SenderNum.length()-2,2);
   SenderNum.remove(0,2);
+
   SerialMon.println(SenderNum);
 
   modem.waitResponse(GF(","));
@@ -176,7 +176,8 @@ void loop() {
 
   bool res = modem.sendSMS(SenderNum, String("Request Received GPS pooling..."));
   DBG("SMS:", res ? "OK" : "fail");
-  float parameter1,  parameter2;
+
+  float parameter1,  parameter2; // GPS data parsing
   char buf[16];
   while (1) {
         if (modem.getGPS(&parameter1, &parameter2)) {
@@ -220,6 +221,7 @@ void loop() {
         delay(2000);
     }
 
+// Version 2 Not working for the moment.
   // float lat2      = 0;
   // float lon2      = 0;
   // float speed2    = 0;
@@ -255,7 +257,7 @@ void loop() {
 
   }
 
-  // SerialMon.println(dat);
+  // SerialMon.println(dat); // Hard Dump
 
   // for(int i=0;i<sizeof(dat);i++){
   //     SerialMon.print(dat[i],HEX);
