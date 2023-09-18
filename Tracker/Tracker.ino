@@ -17,6 +17,11 @@
 // set GSM PIN, if any
 #define GSM_PIN "1234"
 
+#include <esp_adc_cal.h>
+
+int vref = 1100;
+
+
 #include "SMSmodem.h"
 #include <SPI.h>
 #include <SD.h>
@@ -80,6 +85,19 @@ void setup() {
 
     SerialAT.begin(UART_BAUD, SERIAL_8N1, PIN_RX, PIN_TX);
 
+    // initiate voltage
+    esp_adc_cal_characteristics_t adc_chars;
+    esp_adc_cal_value_t val_type = esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_11, ADC_WIDTH_BIT_12, 1100, &adc_chars);    //Check type of calibration value used to characterize ADC
+    if (val_type == ESP_ADC_CAL_VAL_EFUSE_VREF) {
+        Serial.printf("eFuse Vref:%u mV", adc_chars.vref);
+        vref = adc_chars.vref;
+    } else if (val_type == ESP_ADC_CAL_VAL_EFUSE_TP) {
+        Serial.printf("Two Point --> coeff_a:%umV coeff_b:%umV\n", adc_chars.coeff_a, adc_chars.coeff_b);
+    } else {
+        Serial.println("Default Vref: 1100mV");
+    }
+
+
     // Restart takes quite some time
     // To skip it, call init() instead of restart()
     SerialMon.println("Initializing modem...");
@@ -141,6 +159,20 @@ void setup() {
     //modem.sendAT("+CNMI=1,2,0,0,0");
     modem.sendAT(GF("+CMGF=1"));
     modem.waitResponse();
+
+    // eco
+    esp_sleep_enable_ext0_wakeup(GPIO_NUM_33, 0);
+
+    esp_bluedroid_disable()
+    esp_bt_controller_disable()
+    esp_wifi_stop()
+
+
+    //go to sleep
+    delay(1000);
+    modem.sendAT(GF("+CSCLK=2"));//Modem sleep
+    delay(1000);
+    esp_light_sleep_start();
 
 }
 
@@ -209,8 +241,23 @@ void loop() {
                 String GpsSMS = "Coord : \n lat : ";
                 GpsSMS += lat+ "\n long : "+lon + "\n" ;
                 GpsSMS += "www.google.com/maps/search/"+lat+","+lon;
+
+                // voltage info...
+                uint16_t v = analogRead(BAT_ADC);
+                float battery_voltage = ((float)v / 4095.0) * 2.0 * 3.3 * (vref / 1000.0);
+                String voltage = "\nVoltage :" + String(battery_voltage) + "V\n";
+
+                GpsSMS+=voltage;
+
                 bool resSms = modem.sendSMS(SenderNum, GpsSMS);
                 DBG("SMS:", resSms ? "OK" : "fail");
+
+                //return to sleep
+                //go to sleep
+                delay(1000);
+                modem.sendAT(GF("+CSCLK=2"));//Modem sleep
+                delay(1000);
+                esp_light_sleep_start();
 
             }
             break;
